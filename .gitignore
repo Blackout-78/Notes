@@ -16,3 +16,6 @@ __pycache__/
 KEYSTORE_*.txt
 github-secrets*.txt
 keystore.properties
+dist/
+*.spec
+desktop/version.json

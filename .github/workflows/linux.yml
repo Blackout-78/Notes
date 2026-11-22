@@ -1,0 +1,61 @@
+name: Build Notes Linux
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notes-linux
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2 libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0
+          python -m pip install "PySide6>=6.7,<6.10" pyinstaller
+
+      - name: Build app
+        run: |
+          VNAME=$(tr -d '[:space:]' < VERSION)
+          echo "{\"name\":\"$VNAME\",\"code\":${{ github.run_number }}}" > desktop/version.json
+          python -m PyInstaller --noconfirm --clean --onedir --name Notes \
+            --add-data "app/src/main/assets:web" \
+            --add-data "desktop/platform.js:." \
+            --add-data "desktop/version.json:." \
+            --add-data "desktop/icon.png:." \
+            desktop/main.py
+
+      - name: Package archive
+        run: |
+          mkdir -p out/Notes
+          cp -r dist/Notes/. out/Notes/
+          cp desktop/pack/linux/* out/Notes/
+          cp desktop/icon.png out/Notes/notes.png
+          chmod +x out/Notes/install.sh out/Notes/uninstall.sh out/Notes/Notes
+          tar -C out -czf out/Notes-linux.tar.gz Notes
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VNAME=$(tr -d '[:space:]' < VERSION)
+          gh release delete linux-latest --cleanup-tag --yes || true
+          gh release create linux-latest out/Notes-linux.tar.gz \
+            --title "Notes $VNAME linux (Build ${{ github.run_number }})" \
+            --notes-file RELEASE_NOTES.md \
+            --target "$GITHUB_SHA" \
+            --latest=false

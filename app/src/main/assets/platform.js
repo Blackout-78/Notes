@@ -1,0 +1,1 @@
+/* Android needs nothing here. The desktop apps replace this file with their own bridge. */

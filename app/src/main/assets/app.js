@@ -2,6 +2,10 @@
 (function () {
   var A = window.Android;
   var $ = function (s) { return document.querySelector(s); };
+  var PIC_CANON = 'https://appassets.notes/pics/';
+  var PIC_LOCAL = window.PIC_LOCAL || '';
+  function toLocal(h) { return PIC_LOCAL ? String(h).split(PIC_CANON).join(PIC_LOCAL) : h; }
+  function toCanon(h) { return PIC_LOCAL ? String(h).split(PIC_LOCAL).join(PIC_CANON) : h; }
 
   /* ---------- utilities ---------- */
   var MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -153,10 +157,11 @@
   /* ---------- state ---------- */
   var S = {
     view: 'home', notes: [], metaFolders: [], settings: { screenProtect: true, cleanPics: true, trashDays: 30 },
-    ver: { name: '0.0.0', code: 0 }, filter: { k: 'all', v: '' }, chip: 'all', q: '', sort: 'edited',
+    ver: { name: '0.0.0', code: 0 }, platform: 'android', filter: { k: 'all', v: '' }, chip: 'all', q: '', sort: 'edited',
     cur: null, curNew: false, range: null, img: null, lastHl: '#fff176', colorOpen: false, promptCb: null, saveT: 0, dirty: false
   };
   function load() {
+    try { S.platform = (A.getPlatform && A.getPlatform()) || 'android'; } catch (e) { }
     try { S.settings = JSON.parse(A.getSettings()); } catch (e) { }
     try { S.ver = JSON.parse(A.getVersion()); } catch (e) { }
     try { S.notes = JSON.parse(A.getNotes()).filter(function (n) { return n && n.id; }).map(function (n) { n.html = n.html || ''; n.tags = n.tags || []; n.folder = n.folder || ''; n.deletedAt = n.deletedAt || 0; return n; }); } catch (e) { S.notes = []; }
@@ -255,7 +260,7 @@
       var tagH = n.folder ? '<span class="tag">' + esc(n.folder) + '</span>' : (n.tags && n.tags[0] ? '<span class="tag">' + esc(n.tags[0]) + '</span>' : '<span></span>');
       return '<button class="card" data-act="open" data-id="' + n.id + '">' +
         '<span class="t"><span>' + esc(n.title || 'Untitled') + '</span>' + (n.pinned ? ic('pin') : '') + '</span>' +
-        (img ? '<span class="th" style="background-image:url(\'' + img + '\')"></span>' : '') +
+        (img ? '<span class="th" style="background-image:url(\'' + toLocal(img) + '\')"></span>' : '') +
         (prev ? '<span class="s">' + esc(prev) + '</span>' : '') +
         '<span class="f">' + tagH + '<span class="date">' + fmtShort(n.edited) + '</span></span></button>';
     }).join('');
@@ -284,7 +289,7 @@
     $('#screen').innerHTML =
       '<div class="hdr"><h1>Settings</h1></div><div class="rows">' +
       '<div class="lbl" style="padding:4px 0 0"><span>PRIVACY</span></div>' +
-      '<button class="row" data-act="toggle" data-v="screenProtect"><span class="a"><b>Screen protection</b><span>Blank in app switcher, no screenshots</span></span>' + sw('screenProtect') + '</button>' +
+      (S.platform === 'linux' ? '' : '<button class="row" data-act="toggle" data-v="screenProtect"><span class="a"><b>Screen protection</b><span>' + (S.platform === 'windows' ? 'Hidden from screenshots and screen recording' : 'Blank in app switcher, no screenshots') + '</span></span>' + sw('screenProtect') + '</button>') +
       '<button class="row" data-act="toggle" data-v="cleanPics"><span class="a"><b>Clean hidden info from pictures</b><span>Location and device data removed on insert</span></span>' + sw('cleanPics') + '</button>' +
       '<div class="lbl" style="padding:10px 0 0"><span>TRASH</span></div>' +
       '<button class="row" data-act="trashDays"><span class="a"><b>Keep deleted notes</b></span><span class="pill">' + S.settings.trashDays + ' days</span></button>' +
@@ -340,7 +345,7 @@
       '<input id="title" class="etitle" placeholder="Title" value="' + esc(n.title) + '" maxlength="200" autocomplete="off" enterkeyhint="next">' +
       '<div class="stampline" id="stampline"></div>' +
       '<div class="doc" id="doc" contenteditable="true" spellcheck="true"></div>';
-    $('#doc').innerHTML = sanitize(n.html) || '<p><br></p>';
+    $('#doc').innerHTML = toLocal(sanitize(n.html)) || '<p><br></p>';
     drawMeta(); drawStampline();
     function tb(act, data, inner, label) { return '<button class="tb nofocus" data-act="' + act + '" ' + data + ' aria-label="' + label + '">' + inner + '</button>'; }
     $('#bottom').innerHTML = '<div class="tbar">' +
@@ -380,7 +385,7 @@
     n.title = (t ? t.value : n.title).trim();
     var clone = d.cloneNode(true);
     Array.prototype.forEach.call(clone.querySelectorAll('img.sel'), function (i) { i.classList.remove('sel'); if (!i.getAttribute('class')) i.removeAttribute('class'); });
-    n.html = clone.innerHTML;
+    n.html = toCanon(clone.innerHTML);
     return true;
   }
   function flush() {
@@ -545,7 +550,7 @@
     var cd = e.clipboardData; if (!cd) return;
     e.preventDefault();
     var html = cd.getData('text/html'), text = cd.getData('text/plain');
-    if (html) exec('insertHTML', sanitize(html)); else if (text) exec('insertText', text);
+    if (html) exec('insertHTML', toLocal(sanitize(toCanon(html)))); else if (text) exec('insertText', text);
   }
   function setImg(el) {
     if (S.img && S.img !== el) { S.img.classList.remove('sel'); if (!S.img.getAttribute('class')) S.img.removeAttribute('class'); }
@@ -798,7 +803,7 @@
 
   window.onImagePicked = function (name) {
     if (!/^[a-z0-9]{4,40}\.(jpg|png|gif|webp)$/.test(name || '')) { if (name === '') return; toast('Could not add that picture.'); return; }
-    withSel(function () { exec('insertHTML', '<p><img src="https://appassets.notes/pics/' + name + '" style="width:100%"></p><p><br></p>'); });
+    withSel(function () { exec('insertHTML', '<p><img src="' + (PIC_LOCAL || PIC_CANON) + name + '" style="width:100%"></p><p><br></p>'); });
   };
   window.onBackupDone = function (kind, ok) {
     if (kind === 'import' && ok) { load(); render(); toast('Backup imported.'); }
@@ -814,6 +819,17 @@
     return false;
   };
 
-  load();
-  render();
+  window.__flush = function () { flush(); return true; };
+
+  /* desktop keyboard shortcuts */
+  document.addEventListener('keydown', function (e) {
+    if (S.platform === 'android') return;
+    var ctrl = e.ctrlKey || e.metaKey;
+    if (ctrl && e.key.toLowerCase() === 'n') { e.preventDefault(); if (S.view !== 'editor') newNote(); else { flush(); newNote(); } }
+    else if (ctrl && e.key.toLowerCase() === 'f') { e.preventDefault(); if (S.view !== 'home') { S.view = 'home'; render(); } var q = $('#q'); if (q) q.focus(); }
+    else if (e.key === 'Escape' && !(document.activeElement && document.activeElement.id === 'q' && S.q)) { if (window.onBack()) e.preventDefault(); }
+  });
+
+  var ready = (A && A.__ready) ? A.__ready() : Promise.resolve();
+  ready.then(function () { load(); render(); });
 })();
